@@ -1,0 +1,63 @@
+-- 1. AUCTION SESSIONS TABLE
+CREATE TABLE auction_sales_events (
+    sale_event_id INT IDENTITY(1,1) PRIMARY KEY,
+    auction_house VARCHAR(100) NOT NULL,          -- e.g., 'Keeneland', 'OBS'
+    sale_name VARCHAR(150) NOT NULL,               -- e.g., 'September Yearling Sale 2026'
+    sale_year INT NOT NULL,                        -- 2026
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    created_at DATETIME2 DEFAULT GETDATE()
+);
+
+-- 2. HORSES & PEDIGREE BASE MATRIX
+CREATE TABLE horses (
+    horse_id INT IDENTITY(1,1) PRIMARY KEY,
+    horse_name VARCHAR(100) NULL,                  -- 'UNNAMED' for most yearlings
+    color VARCHAR(30) NULL,                        -- Bay, Chestnut, Gray, etc.
+    sex CHAR(1) CHECK (sex IN ('C', 'F', 'G')),    -- Colt, Filly, Gelding
+    foaling_date DATE NULL,
+    sire_name VARCHAR(120) NOT NULL,
+    dam_name VARCHAR(120) NOT NULL,
+    dam_sire_name VARCHAR(120) NULL,               -- Broodmare Sire
+    dosage_index DECIMAL(4,2) NULL,                -- Genetic stamina/speed profile
+    nicking_score VARCHAR(5) NULL,                 -- A++, A, B, C, etc.
+    dam_blacktype_producer BIT DEFAULT 0,          -- 1 if Dam produced stakes winners
+    created_at DATETIME2 DEFAULT GETDATE()
+);
+
+-- 3. CATALOG HIPS (Yearling Ingestion Table)
+CREATE TABLE catalog_hips (
+    hip_id INT IDENTITY(1,1) PRIMARY KEY,
+    sale_event_id INT FOREIGN KEY REFERENCES auction_sales_events(sale_event_id),
+    horse_id INT FOREIGN KEY REFERENCES horses(horse_id),
+    hip_number INT NOT NULL,
+    book_number INT NULL,                          -- e.g., Book 1, Book 2
+    session_number INT NULL,                       -- e.g., Session 3
+    consignor_name VARCHAR(200) NULL,
+    barn_number VARCHAR(50) NULL,
+    is_out BIT DEFAULT 0,                          -- Toggled to 1 if withdrawn
+    created_at DATETIME2 DEFAULT GETDATE(),
+    CONSTRAINT UQ_Sale_Hip UNIQUE (sale_event_id, hip_number)
+);
+
+-- 4. YEARLING HAMMER & ARBITRAGE RESULTS TABLE
+CREATE TABLE yearling_purchase_results (
+    purchase_id INT IDENTITY(1,1) PRIMARY KEY,
+    hip_id INT FOREIGN KEY REFERENCES catalog_hips(hip_id),
+    sale_status VARCHAR(20) NOT NULL,              -- 'SOLD', 'RNA', 'OUT'
+    hammer_price_usd DECIMAL(12,2) NULL,          -- Purchase price or final bid
+    buyer_name VARCHAR(200) NULL,                  -- Agent or Syndicate Buyer
+    age_at_sale_days INT NULL,                     -- Calculated: Sale Date - Foaling Date
+    
+    -- Machine Learning & Feature Outputs
+    predicted_gross_2yo_price DECIMAL(12,2) NULL,
+    predicted_net_profit_usd DECIMAL(12,2) NULL,
+    predicted_roi_pct DECIMAL(6,2) NULL,
+    arbitrage_index_score DECIMAL(4,1) NULL,       -- Scaled 1-100
+    
+    updated_at DATETIME2 DEFAULT GETDATE()
+);
+
+-- INDEXES FOR FAST XGBOOST FETCH QUERIES
+CREATE INDEX IX_Catalog_HipNumber ON catalog_hips(hip_number);
+CREATE INDEX IX_Horses_Pedigree ON horses(sire_name, dam_name);
